@@ -146,6 +146,7 @@ app.get('/jen-detail', async (req, res) => {
   try {
     const browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: '/usr/bin/chromium-browser', // або '/usr/bin/chromium' залежно від вашої ОС
     });
     const page = await browser.newPage();
     await page.setUserAgent(
