@@ -148,6 +148,9 @@ app.get('/jen-detail', async (req, res) => {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 40000 });
 
     // Спробуйте дочекатися одного з можливих контейнерів з фото або просто body
