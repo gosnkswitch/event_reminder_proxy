@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import https from 'https';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import bodyParser from 'body-parser';
 import fs from 'fs';
+import chromium from 'chromium';
+import { writeFile } from 'fs/promises';
+
+puppeteer.use(StealthPlugin());
 
 const app = express();
 app.use(cors());
@@ -66,14 +71,24 @@ app.get('/sg-detail', async (req, res) => {
   }
   try {
     const browser = await puppeteer.launch({
-      headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: chromium.path,
+      headless: false, // ← ось тут!
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled'
+      ],
     });
     const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9'
+    });
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     // Дочекайтесь, поки зʼявиться таблиця з деталями (або інший ключовий елемент)
     await page.waitForSelector('table', { timeout: 15000 });
     const html = await page.content();
+    await writeFile('sg_auction_debug.html', html);
     await browser.close();
     res.send(html);
   } catch (e) {
@@ -109,29 +124,30 @@ app.get('/jen-auction', async (req, res) => {
 });
 
 app.get('/jen-img', async (req, res) => {
-  try {
-    const imgUrl = req.query.url;
-    if (
-      !imgUrl ||
-      !(imgUrl.startsWith('https://www.jencorp.net/') || imgUrl.startsWith('https://jencorp.net/'))
-    ) {
-      res.status(400).send('Invalid image url');
+  const imgUrl = req.query.url;
+  if (
+    !imgUrl ||
+    !(imgUrl.startsWith('https://www.jencorp.net/') || imgUrl.startsWith('https://jencorp.net/'))
+  ) {
+    res.status(400).send('Invalid image url');
+    return;
+  }
+  https.get(imgUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Referer': 'https://www.jencorp.net/'
+    }
+  }, (imgRes) => {
+    if (imgRes.statusCode !== 200) {
+      res.status(imgRes.statusCode).send('Image fetch error');
       return;
     }
-    https.get(imgUrl, (imgRes) => {
-      if (imgRes.statusCode !== 200) {
-        res.status(imgRes.statusCode).send('Image fetch error');
-        return;
-      }
-      res.set('Access-Control-Allow-Origin', '*');
-      res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
-      imgRes.pipe(res);
-    }).on('error', (e) => {
-      res.status(500).send('Proxy image error: ' + e.toString());
-    });
-  } catch (e) {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+    imgRes.pipe(res);
+  }).on('error', (e) => {
     res.status(500).send('Proxy image error: ' + e.toString());
-  }
+  });
 });
 
 app.get('/jen-detail', async (req, res) => {
@@ -144,36 +160,36 @@ app.get('/jen-detail', async (req, res) => {
     res.status(400).send('Invalid detail url');
     return;
   }
+  let page;
   try {
-    // --- ВАЖЛИВО: Динамічно визначати шлях до Chromium ---
-    // 1. Перевірте, де саме встановлено Chromium на вашому сервері:
-    //    which chromium-browser
-    //    which chromium
-    //    which google-chrome
-    // 2. Вкажіть правильний шлях нижче.
-    //    Наприклад: '/usr/bin/chromium' або '/usr/bin/google-chrome-stable'
+    console.log('jen-detail request:', url);
     const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      executablePath: '/usr/bin/chromium', // ← змініть на актуальний шлях для вашого серверу!
+      executablePath: chromium.path,
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled'
+      ],
     });
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 40000 });
-
-    try {
-      await page.waitForSelector('.thumb_list img, .main_img img, .photo_area img, table, body', { timeout: 20000 });
-    } catch (e) {
-      console.error('jen-detail: selector not found, fallback to body');
-    }
-
     const html = await page.content();
+    fs.writeFileSync('jen_detail_debug.html', html);
     await browser.close();
     res.send(html);
   } catch (e) {
+    // Додайте це:
+    if (page) {
+      const html = await page.content();
+      fs.writeFileSync('jen_detail_debug_error.html', html);
+    }
     console.error('jen-detail error:', e);
-    res.status(500).send('Puppeteer error: ' + e.toString());
+    if (e.stack) console.error(e.stack);
+    res.status(500).send('Proxy error: ' + e.toString());
   }
 });
 
