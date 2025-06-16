@@ -66,6 +66,7 @@ app.get('/sg-detail', async (req, res) => {
   }
   try {
     const browser = await puppeteer.launch({
+      headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();
@@ -144,9 +145,16 @@ app.get('/jen-detail', async (req, res) => {
     return;
   }
   try {
+    // --- ВАЖЛИВО: Динамічно визначати шлях до Chromium ---
+    // 1. Перевірте, де саме встановлено Chromium на вашому сервері:
+    //    which chromium-browser
+    //    which chromium
+    //    which google-chrome
+    // 2. Вкажіть правильний шлях нижче.
+    //    Наприклад: '/usr/bin/chromium' або '/usr/bin/google-chrome-stable'
     const browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      executablePath: '/usr/bin/chromium-browser', // або '/usr/bin/chromium' залежно від вашої ОС
+      executablePath: '/usr/bin/chromium', // ← змініть на актуальний шлях для вашого серверу!
     });
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -154,11 +162,9 @@ app.get('/jen-detail', async (req, res) => {
     );
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 40000 });
 
-    // Спробуйте дочекатися одного з можливих контейнерів з фото або просто body
     try {
       await page.waitForSelector('.thumb_list img, .main_img img, .photo_area img, table, body', { timeout: 20000 });
     } catch (e) {
-      // Якщо не знайдено, все одно пробуємо взяти контент
       console.error('jen-detail: selector not found, fallback to body');
     }
 
